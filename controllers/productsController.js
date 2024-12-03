@@ -10,7 +10,12 @@ exports.getAllProducts = async (req, res) => {
 };
 
 exports.createProduct = async (req, res) => {
-  const { user_id, name, description, price, category_id, is_new, is_best_seller, is_on_promotion } = req.body;
+  const user_id = req.user?.id;
+
+  if (!user_id) {
+      return res.status(400).json({ message: 'User ID is missing from token' });
+  }
+  const {name, description, price, category_id, is_new, is_best_seller, is_on_promotion } = req.body;
   try {
     const [result] = await pool.query(
       `INSERT INTO Products (user_id, name, description, price, category_id, is_new, is_best_seller, is_on_promotion) 
