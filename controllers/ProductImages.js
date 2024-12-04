@@ -6,7 +6,7 @@ const fs = require('fs');
 // Configure multer for file uploads
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, './uploads/images');
+        const uploadDir = path.join(__dirname, '../uploads/products');
         if (!fs.existsSync(uploadDir)) {
             fs.mkdirSync(uploadDir, { recursive: true });
         }
@@ -46,7 +46,7 @@ exports.createProductImage = async (req, res) => {
 
     try {
         // Construct the file URL
-        const imageUrl = `/uploads/images/${req.file.filename}`;
+        const imageUrl = `/uploads/products/${req.file.filename}`;
 
         const [result] = await pool.query(
             `INSERT INTO ProductImages (product_id, image_url, is_primary) VALUES (?, ?, ?)`,
