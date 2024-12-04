@@ -15,6 +15,7 @@ const ordersRouter = require('./routes/ordersRouter');
 const subscriptionsRouter = require('./routes/subscriptionsRouter');
 const promotionsRouter = require('./routes/promotionsRouter');
 const auth = require('./routes/authRoutes')
+const productImageRoutes = require('./routes/productImageRoutes');
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/customers', customersRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/promotions', promotionsRouter);
+app.use('/api/product-images', productImageRoutes);
 
 
 app.get("/", (req, res) => {
