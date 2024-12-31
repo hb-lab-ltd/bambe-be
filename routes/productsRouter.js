@@ -8,6 +8,6 @@ router.post('/',authMiddleware.authenticate, productsController.createProduct);
 router.get('/:id', productsController.getProductById); 
 router.put('/:id', productsController.updateProduct); 
 router.delete('/:id', productsController.deleteProduct); 
-router.get('/:productId', productsController.getProductWithImages);
+router.get('/single/:productId', productsController.getProductWithImages);
 
 module.exports = router;
