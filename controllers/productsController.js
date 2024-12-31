@@ -8,14 +8,67 @@ exports.getAllProducts = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-exports.getAllProducts = async (req, res) => {
+exports.getAdminProducts = async (req, res) => {
+  const user_id = req.user?.id;
   try {
-    const user_id = req.user?.id;
-    const [rows] = await pool.query(`SELECT * FROM Products WHERE user_id `);
-    res.json(rows);
+    const query = `
+      SELECT 
+        p.id AS product_id,
+        p.name,
+        p.description,
+        p.price,
+        p.is_new,
+        p.is_best_seller,
+        p.is_on_promotion,
+        p.created_at,
+        i.id AS image_id,
+        i.image_url,
+        i.is_primary
+      FROM Products p
+      LEFT JOIN ProductImages i ON p.id = i.product_id
+      WHERE user_id = ?
+    `;
+
+    const [rows] = await pool.query(query, [user_id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'No products found' });
+    }
+
+    // Group the results by product
+    const productsMap = {};
+    rows.forEach(row => {
+      if (!productsMap[row.product_id]) {
+        productsMap[row.product_id] = {
+          id: row.product_id,
+          name: row.name,
+          description: row.description,
+          price: row.price,
+          is_new: row.is_new,
+          is_best_seller: row.is_best_seller,
+          is_on_promotion: row.is_on_promotion,
+          created_at: row.created_at,
+          images: [],
+        };
+      }
+      if (row.image_id) {
+        productsMap[row.product_id].images.push({
+          id: row.image_id,
+          url: row.image_url,
+          is_primary: row.is_primary,
+        });
+      }
+    });
+
+    // Convert the map to an array
+    const products = Object.values(productsMap);
+
+    res.json(products);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('Error retrieving products with images:', err);
+    res.status(500).json({ error: 'Internal server error' });
   }
+
 };
 
 // Retrieve a product and its images
