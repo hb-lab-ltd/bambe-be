@@ -1,0 +1,21 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "backend",
+    "ft-product",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "backend": "main",
+    "ft-product": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "backend",
+    "ft-product",
+    "origin"
+  ]
+}

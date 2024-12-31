@@ -8,6 +8,15 @@ exports.getAllProducts = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
+exports.getAllProducts = async (req, res) => {
+  try {
+    const user_id = req.user?.id;
+    const [rows] = await pool.query(`SELECT * FROM Products WHERE user_id `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
 // Retrieve a product and its images
 exports.getProductWithImages = async (req, res) => {
