@@ -18,6 +18,13 @@ const auth = require('./routes/authRoutes')
 const productImageRoutes = require('./routes/productImageRoutes');
 const ordersproductRoute =require("./routes/ordersproductRoute");
 
+const listingRoutes = require("./routes/listingRoutes");
+const propertycategoryRoutes = require("./routes/propertycategoryRoutes");
+const reviewRoutes = require("./routes/reviewRoutes");
+const paymentRoutes = require("./routes/paymentRoutes");
+const transactionRoutes = require("./routes/transactionRoutes");
+const listingImageRoutes = require('./routes/listingImageRouters');
+
 const app = express();
 
 app.use(express.json());
@@ -42,11 +49,18 @@ app.use('/api/promotions', promotionsRouter);
 app.use('/api/product-images', productImageRoutes);
 app.use('/api/productorders', ordersproductRoute); 
 
+app.use("/api/listings", listingRoutes);
+app.use("/api/propertycategories", propertycategoryRoutes);
+app.use("/api/reviews", reviewRoutes);
+app.use("/api/payments", paymentRoutes);
+app.use("/api/transactions", transactionRoutes);
+app.use('/api/listing-images', listingImageRoutes);
+
   app.get("/", (req, res) => {
     res.status(200).json({
       status: "200",
-      author: "Bambe group",
-      message: "Most welcome to our API",
+      author: "hblab",
+      message: "Most welcome to our API contact us on +250789028283 or habaruremajules@gmail.com",
     });
   });
   
