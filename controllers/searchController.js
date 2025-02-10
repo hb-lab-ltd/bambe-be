@@ -54,7 +54,6 @@ exports.searchListingsAndProducts = async (req, res) => {
       return res.status(404).json({ message: "No results found" });
     }
 
-    // Formatting the response: Grouping images under each item
     const results = [];
     const itemMap = {};
 

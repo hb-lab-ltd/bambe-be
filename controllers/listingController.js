@@ -1,16 +1,91 @@
-const db = require('../db');
+const db = require("../db");
 
-// exports.getListings = async (req, res) => {
-//   try {
-//     const [listings] = await db.query(`
-//       SELECT *
-//       FROM listings 
-//     `);
-//     res.json(listings);
-//   } catch (err) {
-//     res.status(500).json({ error: err.message });
-//   }
-// };
+exports.getAllListingsAndProducts = async (req, res) => {
+  try {
+    const query = `
+      SELECT * FROM (
+        (SELECT 
+          l.listing_id AS id,
+          l.title AS name,
+          l.description,
+          l.price,
+          l.location,
+          l.coordinates,
+          l.listing_type,
+          l.status,
+          'listing' AS type,
+          l.created_at,
+          li.id AS image_id,
+          li.image_url,
+          li.is_primary
+        FROM listings l
+        LEFT JOIN listingimages li ON l.listing_id = li.listing_id
+        ORDER BY l.created_at DESC)
+      
+        UNION ALL
+
+        (SELECT 
+          p.id AS id,
+          p.name,
+          p.description,
+          p.price,
+          NULL AS location,
+          NULL AS coordinates,
+          NULL AS listing_type,
+          NULL AS status,
+          'product' AS type,
+          p.created_at,
+          pi.id AS image_id,
+          pi.image_url,
+          pi.is_primary
+        FROM products p
+        LEFT JOIN productimages pi ON p.id = pi.product_id
+        ORDER BY p.created_at DESC)
+      ) AS combined_data
+      ORDER BY created_at DESC
+    `;
+
+    const [rows] = await db.query(query);
+
+    if (!rows.length) {
+      return res.status(404).json({ error: "No data found" });
+    }
+
+    const results = {};
+    
+    rows.forEach((row) => {
+      if (!results[row.id]) {
+        results[row.id] = {
+          id: row.id,
+          name: row.name,
+          description: row.description,
+          price: row.price,
+          location: row.location,
+          coordinates: row.coordinates,
+          listing_type: row.listing_type,
+          status: row.status,
+          type: row.type,
+          created_at: row.created_at,
+          images: [],
+        };
+      }
+
+      if (row.image_id) {
+        results[row.id].images.push({
+          id: row.image_id,
+          url: row.image_url,
+          is_primary: row.is_primary,
+        });
+      }
+    });
+
+    res.json(Object.values(results)); // Convert object back to an array
+  } catch (err) {
+    console.error("Error fetching listings and products:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
 
 exports.getListings = async (req, res) => {
     try {

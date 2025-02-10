@@ -8,6 +8,7 @@ router.post("/", listingController.createListing);
 router.put("/:id", listingController.updateListing);
 router.delete("/:id", listingController.deleteListing);
 router.get('/single/:listing_id', listingController.getListingWithImages);
+router.get("/listing/product", listingController.getAllListingsAndProducts);
 
 
 
