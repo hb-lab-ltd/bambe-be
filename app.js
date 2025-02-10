@@ -25,6 +25,8 @@ const paymentRoutes = require("./routes/paymentRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const listingImageRoutes = require('./routes/listingImageRouters');
 
+const searchRoutes = require("./routes/searchRoutes");
+
 const app = express();
 
 app.use(express.json());
@@ -55,6 +57,8 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use('/api/listing-images', listingImageRoutes);
+
+app.use("/api/search", searchRoutes);
 
   app.get("/", (req, res) => {
     res.status(200).json({
