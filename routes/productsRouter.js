@@ -10,4 +10,5 @@ router.get('product/:id', productsController.getProductById);
 router.put('/:id', productsController.updateProduct); 
 router.delete('/:id', productsController.deleteProduct); 
 router.get('/single/:productId', productsController.getProductWithImages);
+router.get('/product/cotegory/:categoryId', productsController.getAllProductsWithSpecificCategory);
 module.exports = router;
