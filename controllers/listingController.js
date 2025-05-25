@@ -87,6 +87,67 @@ exports.getAllListingsAndProducts = async (req, res) => {
 };
 
 
+exports.getUserListings = async (req, res) => {
+  const user_id = req.user?.id;
+  try {
+    // 
+    const query = `
+      SELECT 
+        p.listing_id,
+        p.title,
+        p.description,
+        p.price,
+        p.location,
+        p.listing_type,
+        p.status,
+        p.created_at,
+        i.id AS image_id,
+        i.image_url,
+        i.is_primary
+      FROM listings p
+      LEFT JOIN listingimages i ON p.listing_id = i.listing_id
+      WHERE p.user_id = ? 
+    `;
+
+    const [rows] = await db.query(query, [user_id]);
+
+    if (rows.length === 0) {
+      return res.status(404).json({ message: 'No listings found' });
+    }
+
+    const listingsMap = {};
+    rows.forEach(row => {
+      if (!listingsMap[row.listing_id]) {
+        listingsMap[row.listing_id] = {
+          id: row.listing_id,
+          name: row.title,
+          description: row.description,
+          price: row.price,
+          listing_type: row.listing_type,
+          location: row.location,
+          status: row.status,
+          created_at: row.created_at,
+          images: [],
+        };
+      }
+      if (row.image_id) {
+        listingsMap[row.listing_id].images.push({
+          id: row.image_id,
+          url: row.image_url,
+          is_primary: row.is_primary,
+        });
+      }
+    });
+
+    const listings = Object.values(listingsMap);
+
+    res.json(listings);
+  } catch (err) {
+    console.error('Error retrieving listings with images:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+};
+
 exports.getListings = async (req, res) => {
     try {
       // 
@@ -217,13 +278,18 @@ exports.getListingById = async (req, res) => {
 };
 
 exports.createListing = async (req, res) => {
+  const user_id = req.user?.id;
+
+  if (!user_id) {
+      return res.status(400).json({ message: 'User ID is missing from token' });
+  }
   try {
-    const { user_id, category_id, title, description, price, location, listing_type, coordinates } = req.body;
-    await db.query(
+    const {category_id, title, description, price, location, listing_type, coordinates } = req.body;
+    const [result] = await db.query(
       "INSERT INTO listings (user_id, category_id, title, description, price, location, listing_type, coordinates) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       [user_id, category_id, title, description, price, location, listing_type, coordinates]
     );
-    res.status(201).json({ message: "Listing created successfully" });
+    res.status(201).json({ id: result.insertId, message: "Listing created successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
