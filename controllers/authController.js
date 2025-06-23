@@ -1,4 +1,3 @@
-
 const pool = require('../db');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
@@ -20,19 +19,30 @@ exports.register = async (req, res) => {
 // Login
 exports.login = async (req, res) => {
     const { email, password } = req.body;
-    console.log(email);
+    console.log('Login attempt for:', email);
 
     try {
         const [rows] = await pool.query('SELECT * FROM Users WHERE email = ?', [email]);
         const user = rows[0];
 
         if (!user || !(await bcrypt.compare(password, user.password_hash))) {
-            return res.status(401).json({ message: 'Invalid credentials' });
+            return res.status(401).json({ error: 'Invalid credentials' });
         }
 
         const token = jwt.sign({ id: user.id, role: user.role }, process.env.JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token });
+        
+        // Return both token and user info
+        res.json({ 
+            token,
+            user: {
+                id: user.id,
+                username: user.username,
+                email: user.email,
+                role: user.role
+            }
+        });
     } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({ error: error.message });
     }
 };

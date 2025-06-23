@@ -32,7 +32,7 @@ exports.createCategory = async (req, res) => {
 exports.updateCategory = async (req, res) => {
   try {
     const { category_name } = req.body;
-    await db.query("UPDATE categories SET category_name = ? WHERE category_id = ?", [category_name, req.params.id]);
+    await db.query("UPDATE property_categories SET category_name = ? WHERE category_id = ?", [category_name, req.params.id]);
     res.json({ message: "Category updated successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -41,7 +41,7 @@ exports.updateCategory = async (req, res) => {
 
 exports.deleteCategory = async (req, res) => {
   try {
-    await db.query("DELETE FROM categories WHERE category_id = ?", [req.params.id]);
+    await db.query("DELETE FROM property_categories WHERE category_id = ?", [req.params.id]);
     res.json({ message: "Category deleted successfully" });
   } catch (err) {
     res.status(500).json({ error: err.message });

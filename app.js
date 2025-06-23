@@ -1,4 +1,3 @@
-
 const express = require("express");
 const morgan = require("morgan");
 const bodyParser = require("body-parser");
@@ -15,6 +14,7 @@ const ordersRouter = require('./routes/ordersRouter');
 const subscriptionsRouter = require('./routes/subscriptionsRouter');
 const promotionsRouter = require('./routes/promotionsRouter');
 const auth = require('./routes/authRoutes')
+const clientAuthRoutes = require('./routes/clientAuthRoutes');
 const productImageRoutes = require('./routes/productImageRoutes');
 const ordersproductRoute =require("./routes/ordersproductRoute");
 
@@ -24,6 +24,7 @@ const reviewRoutes = require("./routes/reviewRoutes");
 const paymentRoutes = require("./routes/paymentRoutes");
 const transactionRoutes = require("./routes/transactionRoutes");
 const listingImageRoutes = require('./routes/listingImageRouters');
+const inquiriesRoutes = require('./routes/inquiriesRoutes');
 
 const searchRoutes = require("./routes/searchRoutes");
 
@@ -41,6 +42,7 @@ app.use(cors());
 app.use("/uploads", express.static("uploads"));
  
 app.use('/api', auth);
+app.use('/api/client', clientAuthRoutes);
 app.use('/api/users', usersRouter);
 app.use('/api/categories', categoriesRouter);
 app.use('/api/products', productsRouter);
@@ -57,6 +59,7 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/payments", paymentRoutes);
 app.use("/api/transactions", transactionRoutes);
 app.use('/api/listing-images', listingImageRoutes);
+app.use('/api/inquiries', inquiriesRoutes);
 
 app.use("/api/search", searchRoutes);
 
