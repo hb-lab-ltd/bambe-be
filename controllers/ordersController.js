@@ -1,9 +1,9 @@
-const pool = require('../db');
+const prisma = require('../prismaClient');
 
 exports.getAllOrders = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM Orders');
-    res.json(rows);
+    const orders = await prisma.order.findMany();
+    res.json(orders);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -12,11 +12,8 @@ exports.getAllOrders = async (req, res) => {
 exports.createOrder = async (req, res) => {
   const { product_id, customer_id, quantity, total_price } = req.body;
   try {
-    const [result] = await pool.query(
-      'INSERT INTO Orders (product_id, customer_id, quantity, total_price) VALUES (?, ?, ?, ?)',
-      [product_id, customer_id, quantity, total_price]
-    );
-    res.json({ id: result.insertId });
+    const order = await prisma.order.create({ data: { product_id, customer_id, quantity, total_price } });
+    res.json({ id: order.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -24,9 +21,9 @@ exports.createOrder = async (req, res) => {
 
 exports.getOrderById = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM Orders WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Order not found' });
-    res.json(rows[0]);
+    const order = await prisma.order.findUnique({ where: { id: Number(req.params.id) } });
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+    res.json(order);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,10 +32,7 @@ exports.getOrderById = async (req, res) => {
 exports.updateOrder = async (req, res) => {
   const { product_id, customer_id, quantity, total_price } = req.body;
   try {
-    await pool.query(
-      'UPDATE Orders SET product_id = ?, customer_id = ?, quantity = ?, total_price = ? WHERE id = ?',
-      [product_id, customer_id, quantity, total_price, req.params.id]
-    );
+    await prisma.order.update({ where: { id: Number(req.params.id) }, data: { product_id, customer_id, quantity, total_price } });
     res.json({ message: 'Order updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -47,7 +41,7 @@ exports.updateOrder = async (req, res) => {
 
 exports.deleteOrder = async (req, res) => {
   try {
-    await pool.query('DELETE FROM Orders WHERE id = ?', [req.params.id]);
+    await prisma.order.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: 'Order deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

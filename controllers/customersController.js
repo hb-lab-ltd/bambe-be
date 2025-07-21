@@ -1,9 +1,9 @@
-const pool = require('../db');
+const prisma = require('../prismaClient');
 
 exports.getAllCustomers = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM Customers');
-    res.json(rows);
+    const customers = await prisma.customer.findMany();
+    res.json(customers);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -12,11 +12,8 @@ exports.getAllCustomers = async (req, res) => {
 exports.createCustomer = async (req, res) => {
   const { user_id, name, email, phone } = req.body;
   try {
-    const [result] = await pool.query(
-      'INSERT INTO Customers (user_id, name, email, phone) VALUES (?, ?, ?, ?)',
-      [user_id, name, email, phone]
-    );
-    res.json({ id: result.insertId });
+    const customer = await prisma.customer.create({ data: { user_id, name, email, phone } });
+    res.json({ id: customer.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -24,9 +21,9 @@ exports.createCustomer = async (req, res) => {
 
 exports.getCustomerById = async (req, res) => {
   try {
-    const [rows] = await pool.query('SELECT * FROM Customers WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Customer not found' });
-    res.json(rows[0]);
+    const customer = await prisma.customer.findUnique({ where: { id: Number(req.params.id) } });
+    if (!customer) return res.status(404).json({ error: 'Customer not found' });
+    res.json(customer);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,10 +32,7 @@ exports.getCustomerById = async (req, res) => {
 exports.updateCustomer = async (req, res) => {
   const { user_id, name, email, phone } = req.body;
   try {
-    await pool.query(
-      'UPDATE Customers SET user_id = ?, name = ?, email = ?, phone = ? WHERE id = ?',
-      [user_id, name, email, phone, req.params.id]
-    );
+    await prisma.customer.update({ where: { id: Number(req.params.id) }, data: { user_id, name, email, phone } });
     res.json({ message: 'Customer updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -47,7 +41,7 @@ exports.updateCustomer = async (req, res) => {
 
 exports.deleteCustomer = async (req, res) => {
   try {
-    await pool.query('DELETE FROM Customers WHERE id = ?', [req.params.id]);
+    await prisma.customer.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: 'Customer deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });

@@ -1,117 +1,114 @@
-const pool = require('../db');
+const prisma = require('../prismaClient');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 
+// Configure multer for file uploads
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, '../uploads/listing');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${Date.now()}-${file.originalname}`;
-        cb(null, uniqueName);
+  destination: function (req, file, cb) {
+    const uploadDir = 'uploads/listing';
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+    cb(null, uploadDir);
+  },
+  filename: function (req, file, cb) {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    cb(null, uniqueSuffix + '-' + file.originalname);
+  }
 });
 
-const upload = multer({
-    storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // Limit file size per image (5MB)
-    fileFilter: (req, file, cb) => {
-        const fileTypes = /jpeg|jpg|png/;
-        const extname = fileTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = fileTypes.test(file.mimetype);
-
-        if (extname && mimetype) {
-            return cb(null, true);
-        }
-        cb(new Error('Only .jpeg, .jpg, or .png files are allowed'));
+const upload = multer({ 
+  storage: storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB limit per file
+  },
+  fileFilter: function (req, file, cb) {
+    const allowedTypes = /jpeg|jpg|png|gif|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    
+    if (mimetype && extname) {
+      return cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed!'));
     }
-});
+  }
+}).array('images', 10); // Accept up to 10 images per upload
 
-exports.uploadImages = upload.array('images'); 
+exports.upload = upload;
 
-exports.createProductImages = async (req, res) => {
-    const { listing_id } = req.body;
-
-    if (!listing_id || !req.files || req.files.length === 0) {
-        return res.status(400).json({ message: 'Listing ID and at least one image file are required' });
-    }
-
-    try {
-        const imageRecords = req.files.map((file, index) => [
-            listing_id,
-            `/uploads/listing/${file.filename}`,
-            index === 0 
-        ]);
-
-        const sqlQuery = `INSERT INTO listingimages (listing_id, image_url, is_primary) VALUES ?`;
-
-        const [result] = await pool.query(sqlQuery, [imageRecords]);
-
-        res.json({
-            message: 'Images uploaded successfully',
-            images: imageRecords.map((image, index) => ({
-                id: result.insertId + index,
-                listing_id: image[0],
-                image_url: image[1],
-                is_primary: image[2],
-            })),
-        });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+exports.getAllListingImages = async (req, res) => {
+  try {
+    const images = await prisma.listingImage.findMany();
+    res.json(images);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-exports.getListingImages = async (req, res) => {
-    const { listing_id } = req.params;
-
-    if (!listing_id) {
-        return res.status(400).json({ message: 'Listing ID is required' });
-    }
-
-    try {
-        const [images] = await pool.query(
-            `SELECT * FROM listingimages WHERE listing_id = ?`,
-            [listing_id]
-        );
-        res.json(images);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+exports.getListingImageById = async (req, res) => {
+  try {
+    const image = await prisma.listingImage.findUnique({ where: { id: Number(req.params.id) } });
+    if (!image) return res.status(404).json({ error: 'Listing image not found' });
+    res.json(image);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };
 
-exports.deleteProductImage = async (req, res) => {
-    const { id } = req.params;
+exports.createListingImage = async (req, res) => {
+  // Debug logging
+  console.log('DEBUG req.body:', req.body);
+  console.log('DEBUG req.file:', req.file);
+  console.log('DEBUG req.files:', req.files);
 
-    if (!id) {
-        return res.status(400).json({ message: 'Image ID is required' });
-    }
+  if (!req.files || req.files.length === 0) {
+    return res.status(400).json({ error: 'No image files provided' });
+  }
 
-    try {
-        const [imageData] = await pool.query(`SELECT image_url FROM listingimages WHERE id = ?`, [id]);
+  const { listing_id, is_primary = false } = req.body;
+  
+  if (!listing_id) {
+    return res.status(400).json({ error: 'listing_id is required' });
+  }
 
-        if (imageData.length === 0) {
-            return res.status(404).json({ message: 'Image not found' });
-        }
+  try {
+    const image_urls = req.files.map(file => `/uploads/listing/${file.filename}`);
+    
+    const images = await prisma.listingImage.createMany({ 
+      data: image_urls.map((image_url, index) => ({ 
+        listing_id: parseInt(listing_id), 
+        image_url, 
+        is_primary: is_primary === 'true' || is_primary === true 
+      }))
+    });
+    
+    res.status(201).json({ 
+      message: 'Listing images uploaded successfully',
+      images: images.count // Assuming images.count is available from createMany
+    });
+  } catch (err) {
+    console.error('Error creating listing image:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
 
-        const imagePath = path.join(__dirname, '..', imageData[0].image_url);
+exports.updateListingImage = async (req, res) => {
+  const { listing_id, image_url, is_primary } = req.body;
+  try {
+    await prisma.listingImage.update({ where: { id: Number(req.params.id) }, data: { listing_id, image_url, is_primary } });
+    res.json({ message: 'Listing image updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
 
-        if (fs.existsSync(imagePath)) {
-            fs.unlinkSync(imagePath);
-        }
-
-        const [result] = await pool.query(`DELETE FROM listingimages WHERE id = ?`, [id]);
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ message: 'Image not found' });
-        }
-
-        res.json({ message: 'Image deleted successfully' });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+exports.deleteListingImage = async (req, res) => {
+  try {
+    await prisma.listingImage.delete({ where: { id: Number(req.params.id) } });
+    res.json({ message: 'Listing image deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 };

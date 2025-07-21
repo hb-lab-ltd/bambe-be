@@ -1,0 +1,316 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  Int       @id @default(autoincrement())
+  username            String    @unique
+  email               String    @unique
+  password_hash       String
+  role                UserRole  @default(seller)
+  subscription_status SubscriptionStatus @default(inactive)
+  created_at          DateTime? @default(now())
+  phone               String?
+  status              String?
+  customers           Customer[]
+  listings            Listing[]
+  products            Product[]
+  reviews             Review[]
+  subscriptions       Subscription[]
+  transactions_buyer  Transaction[] @relation("buyer")
+  transactions_seller Transaction[] @relation("seller")
+  @@map("users")
+}
+
+enum UserRole {
+  admin
+  agent
+  seller
+}
+
+enum SubscriptionStatus {
+  active
+  inactive
+}
+
+model Customer {
+  id               Int       @id @default(autoincrement())
+  user_id          Int
+  name             String?
+  email            String?
+  phone            String?
+  status           CustomerStatus @default(active)
+  vip              Boolean   @default(false)
+  properties_count Int?      @default(0)
+  last_contact     DateTime?
+  created_at       DateTime? @default(now())
+  updated_at       DateTime? @updatedAt
+  password         String?
+  user             User      @relation(fields: [user_id], references: [id])
+  inquiries        Inquiry[]
+  orders           Order[]
+  @@map("customers")
+}
+
+enum CustomerStatus {
+  active
+  inactive
+  pending
+}
+
+model Inquiry {
+  id                Int       @id @default(autoincrement())
+  name              String?
+  email             String?
+  phone             String?
+  message           String
+  property_id       Int?
+  status            InquiryStatus @default(new)
+  priority          InquiryPriority @default(medium)
+  notes             String?
+  reply_message     String?
+  replied_at        DateTime?
+  created_at        DateTime? @default(now())
+  updated_at        DateTime? @updatedAt
+  client_reply      String?
+  client_replied_at DateTime?
+  client_id         Int?
+  client            Customer? @relation(fields: [client_id], references: [id])
+  property          Listing?  @relation(fields: [property_id], references: [listing_id])
+  @@map("inquiries")
+}
+
+enum InquiryStatus {
+  new
+  replied
+  client_replied
+  closed
+  pending
+}
+
+enum InquiryPriority {
+  low
+  medium
+  high
+}
+
+model Listing {
+  listing_id    Int       @id @default(autoincrement())
+  user_id       Int
+  category_id   Int
+  title         String
+  description   String?   @db.Text
+  price         Decimal   @db.Decimal(10,2)
+  location      String
+  listing_type  ListingType
+  status        ListingStatus @default(available)
+  created_at    DateTime? @default(now())
+  coordinates   String?
+  views         Int?      @default(0)
+  bedrooms      Int?
+  bathrooms     Int?
+  square_feet   Decimal?  @db.Decimal(10,2)
+  user          User      @relation(fields: [user_id], references: [id])
+  category      PropertyCategory @relation(fields: [category_id], references: [category_id])
+  images        ListingImage[]
+  reviews       Review[]
+  transactions  Transaction[]
+  inquiries     Inquiry[]
+  @@map("listings")
+}
+
+enum ListingType {
+  sale
+  rent
+}
+
+enum ListingStatus {
+  available
+  sold
+  rented
+}
+
+model ListingImage {
+  id          Int      @id @default(autoincrement())
+  listing_id  Int
+  image_url   String
+  is_primary  Boolean  @default(false)
+  uploaded_at DateTime @default(now())
+  listing     Listing  @relation(fields: [listing_id], references: [listing_id])
+  @@map("listingimages")
+}
+
+model Product {
+  id            Int      @id @default(autoincrement())
+  user_id       Int
+  name          String
+  description   String?
+  price         Decimal  @db.Decimal(10,2)
+  category_id   Int?
+  is_new        Boolean  @default(false)
+  is_best_seller Boolean @default(false)
+  is_on_promotion Boolean @default(false)
+  created_at    DateTime? @default(now())
+  user          User     @relation(fields: [user_id], references: [id])
+  category      Category? @relation(fields: [category_id], references: [id])
+  images        ProductImage[]
+  orders        Order[]
+  promotions    Promotion[]
+  @@map("products")
+}
+
+model ProductImage {
+  id          Int      @id @default(autoincrement())
+  product_id  Int
+  image_url   String
+  is_primary  Boolean  @default(false)
+  uploaded_at DateTime @default(now())
+  product     Product  @relation(fields: [product_id], references: [id])
+  @@map("productimages")
+}
+
+model Category {
+  id    Int     @id @default(autoincrement())
+  name  String  @unique
+  products Product[]
+  @@map("categories")
+}
+
+model Order {
+  id          Int      @id @default(autoincrement())
+  product_id  Int
+  customer_id Int
+  quantity    Int
+  total_price Decimal  @db.Decimal(10,2)
+  order_date  DateTime? @default(now())
+  product     Product  @relation(fields: [product_id], references: [id])
+  customer    Customer @relation(fields: [customer_id], references: [id])
+  @@map("orders")
+}
+
+model OrdersProduct {
+  id           Int      @id @default(autoincrement())
+  first_name   String
+  last_name    String
+  email        String
+  phone_number String?
+  address_line String?
+  city         String
+  state        String?
+  zip_code     String?
+  product_id   Int
+  quantity     Int      @default(1)
+  price        Decimal  @db.Decimal(10,2)
+  order_status OrderProductStatus @default(Pending)
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  @@map("ordersproduct")
+}
+
+enum OrderProductStatus {
+  Pending
+  Completed
+  Cancelled
+}
+
+model Payment {
+  payment_id     Int      @id @default(autoincrement())
+  transaction_id Int
+  amount         Decimal  @db.Decimal(10,2)
+  payment_method PaymentMethod
+  payment_status PaymentStatus @default(pending)
+  payment_date   DateTime @default(now())
+  transaction    Transaction @relation(fields: [transaction_id], references: [transaction_id])
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  credit_card
+  paypal
+  bank_transfer
+}
+
+enum PaymentStatus {
+  pending
+  paid
+  failed
+}
+
+model Promotion {
+  id         Int      @id @default(autoincrement())
+  product_id Int
+  type       PromotionType?
+  product    Product  @relation(fields: [product_id], references: [id])
+  @@map("promotions")
+}
+
+enum PromotionType {
+  best_seller
+  new
+  on_promotion
+}
+
+model PropertyCategory {
+  category_id   Int     @id @default(autoincrement())
+  category_name String  @unique
+  listings      Listing[]
+  @@map("property_categories")
+}
+
+model Review {
+  review_id   Int      @id @default(autoincrement())
+  listing_id  Int
+  user_id     Int
+  rating      Int?
+  comment     String?
+  created_at  DateTime @default(now())
+  listing     Listing  @relation(fields: [listing_id], references: [listing_id])
+  user        User     @relation(fields: [user_id], references: [id])
+  @@map("reviews")
+}
+
+model Subscription {
+  id        Int      @id @default(autoincrement())
+  user_id   Int
+  start_date DateTime
+  end_date   DateTime
+  status     SubscriptionStatus2 @default(inactive)
+  user      User     @relation(fields: [user_id], references: [id])
+  @@map("subscriptions")
+}
+
+enum SubscriptionStatus2 {
+  active
+  inactive
+}
+
+model Transaction {
+  transaction_id   Int      @id @default(autoincrement())
+  listing_id       Int
+  buyer_id         Int
+  seller_id        Int
+  transaction_date DateTime @default(now())
+  status           TransactionStatus @default(pending)
+  listing          Listing  @relation(fields: [listing_id], references: [listing_id])
+  buyer            User     @relation("buyer", fields: [buyer_id], references: [id])
+  seller           User     @relation("seller", fields: [seller_id], references: [id])
+  payments         Payment[]
+  @@map("transactions")
+}
+
+enum TransactionStatus {
+  pending
+  completed
+  cancelled
+}

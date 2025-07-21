@@ -1,135 +1,111 @@
-const db = require("../db");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+const prisma = require('../prismaClient');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const nodemailer = require('nodemailer');
+require('dotenv').config();
+
+// Utility function to send email
+async function sendEmail({ to, subject, text, html }) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  return transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to,
+    subject,
+    text,
+    html,
+  });
+}
 
 // Register client from inquiry
 exports.registerFromInquiry = async (req, res) => {
   try {
     const { inquiry_id, name, email, phone, password } = req.body;
-
     // Check if client already exists
-    const [existingClient] = await db.query(
-      "SELECT * FROM customers WHERE email = ?",
-      [email]
-    );
-
-    if (existingClient.length > 0) {
-      return res.status(400).json({ 
-        error: "Client with this email already exists. Please login instead." 
-      });
+    const existingClient = await prisma.customer.findFirst({ where: { email } });
+    if (existingClient) {
+      return res.status(400).json({ error: 'Client with this email already exists. Please login instead.' });
     }
-
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
     // Find a default admin user to use as user_id
-    let [adminUsers] = await db.query("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-    let defaultUserId = 56; // Use a valid user ID from the existing users
-    
-    if (adminUsers.length > 0) {
-      defaultUserId = adminUsers[0].id;
-    }
-
+    let adminUser = await prisma.user.findFirst({ where: { role: 'admin' } });
+    let defaultUserId = adminUser ? adminUser.id : 56;
     // Create client with a valid user_id
-    const [clientResult] = await db.query(
-      "INSERT INTO customers (name, email, phone, password, status, user_id, created_at) VALUES (?, ?, ?, ?, ?, ?, NOW())",
-      [name, email, phone, hashedPassword, 'active', defaultUserId]
-    );
-
-    const clientId = clientResult.insertId;
-
+    const client = await prisma.customer.create({
+      data: {
+        name,
+        email,
+        phone,
+        password: hashedPassword,
+        status: 'active',
+        user_id: defaultUserId
+      }
+    });
+    const clientId = client.id;
     // Update inquiry to link with client (only if inquiry_id is provided)
     if (inquiry_id) {
       try {
-        await db.query(
-          "UPDATE inquiries SET client_id = ? WHERE id = ?",
-          [clientId, inquiry_id]
-        );
+        await prisma.inquiry.update({
+          where: { id: inquiry_id },
+          data: { client_id: clientId }
+        });
       } catch (updateError) {
-        console.error('Update inquiry error:', updateError);
         // Don't fail the registration if inquiry update fails
       }
     }
-
     // Generate JWT token
     const token = jwt.sign(
-      { 
-        id: clientId, 
-        email, 
-        name, 
-        role: 'client' 
+      {
+        id: clientId,
+        email,
+        name,
+        role: 'client'
       },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-
-    res.status(201).json({
-      message: "Client registered successfully",
-      token,
-      client: {
-        id: clientId,
-        name,
-        email,
-        phone
-      }
-    });
-  } catch (error) {
-    console.error("Error registering client:", error);
-    res.status(500).json({ 
-      error: "Internal server error",
-      details: error.message 
-    });
+    // Send welcome email
+    if (email) {
+      await sendEmail({
+        to: email,
+        subject: 'Welcome to UMUHUZA!',
+        text: `Dear ${name},\n\nYour account has been created successfully. You can now log in to your account.`,
+        html: `<p>Dear ${name},</p><p>Your account has been created successfully. You can now log in to your account.</p>`
+      });
+    }
+    res.json({ token, client: { id: clientId, email, name, role: 'client' } });
+  } catch (err) {
+    res.status(500).json({ error: err.message, prisma: err.meta || undefined });
   }
 };
 
-// Client login
-exports.clientLogin = async (req, res) => {
+// Login client
+exports.login = async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const { email, password } = req.body;
-
-    // Find client
-    const [clients] = await db.query(
-      "SELECT * FROM customers WHERE email = ?",
-      [email]
-    );
-
-    if (clients.length === 0) {
-      return res.status(401).json({ error: "Invalid credentials" });
+    const client = await prisma.customer.findFirst({ where: { email } });
+    if (!client || !(await bcrypt.compare(password, client.password))) {
+      return res.status(401).json({ error: 'Invalid credentials' });
     }
-
-    const client = clients[0];
-
-    // Check password
-    const isValidPassword = await bcrypt.compare(password, client.password);
-    if (!isValidPassword) {
-      return res.status(401).json({ error: "Invalid credentials" });
-    }
-
-    // Generate JWT token
     const token = jwt.sign(
-      { 
-        id: client.id, 
-        email: client.email, 
-        name: client.name, 
-        role: 'client' 
+      {
+        id: client.id,
+        email: client.email,
+        name: client.name,
+        role: 'client'
       },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     );
-
-    res.json({
-      message: "Login successful",
-      token,
-      client: {
-        id: client.id,
-        name: client.name,
-        email: client.email,
-        phone: client.phone
-      }
-    });
-  } catch (error) {
-    console.error("Error during client login:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.json({ token, client: { id: client.id, email: client.email, name: client.name, role: 'client' } });
+  } catch (err) {
+    res.status(500).json({ error: err.message, prisma: err.meta || undefined });
   }
 };
 
@@ -137,20 +113,16 @@ exports.clientLogin = async (req, res) => {
 exports.getClientProfile = async (req, res) => {
   try {
     const clientId = req.user.id;
-
-    const [clients] = await db.query(
-      "SELECT id, name, email, phone, status, created_at FROM customers WHERE id = ?",
-      [clientId]
-    );
-
-    if (clients.length === 0) {
-      return res.status(404).json({ error: "Client not found" });
+    const client = await prisma.customer.findUnique({
+      where: { id: clientId },
+      select: { id: true, name: true, email: true, phone: true, status: true, created_at: true }
+    });
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
     }
-
-    res.json(clients[0]);
+    res.json(client);
   } catch (error) {
-    console.error("Error fetching client profile:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -159,16 +131,13 @@ exports.updateClientProfile = async (req, res) => {
   try {
     const clientId = req.user.id;
     const { name, phone } = req.body;
-
-    await db.query(
-      "UPDATE customers SET name = ?, phone = ? WHERE id = ?",
-      [name, phone, clientId]
-    );
-
-    res.json({ message: "Profile updated successfully" });
+    await prisma.customer.update({
+      where: { id: clientId },
+      data: { name, phone }
+    });
+    res.json({ message: 'Profile updated successfully' });
   } catch (error) {
-    console.error("Error updating client profile:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -177,36 +146,22 @@ exports.changePassword = async (req, res) => {
   try {
     const clientId = req.user.id;
     const { currentPassword, newPassword } = req.body;
-
-    // Get current password
-    const [clients] = await db.query(
-      "SELECT password FROM customers WHERE id = ?",
-      [clientId]
-    );
-
-    if (clients.length === 0) {
-      return res.status(404).json({ error: "Client not found" });
+    const client = await prisma.customer.findUnique({ where: { id: clientId } });
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' });
     }
-
-    // Verify current password
-    const isValidPassword = await bcrypt.compare(currentPassword, clients[0].password);
+    const isValidPassword = await bcrypt.compare(currentPassword, client.password);
     if (!isValidPassword) {
-      return res.status(400).json({ error: "Current password is incorrect" });
+      return res.status(400).json({ error: 'Current password is incorrect' });
     }
-
-    // Hash new password
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password
-    await db.query(
-      "UPDATE customers SET password = ? WHERE id = ?",
-      [hashedNewPassword, clientId]
-    );
-
-    res.json({ message: "Password changed successfully" });
+    await prisma.customer.update({
+      where: { id: clientId },
+      data: { password: hashedNewPassword }
+    });
+    res.json({ message: 'Password changed successfully' });
   } catch (error) {
-    console.error("Error changing password:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 };
 
@@ -214,32 +169,31 @@ exports.changePassword = async (req, res) => {
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
-
-    const [clients] = await db.query(
-      "SELECT id, name FROM customers WHERE email = ?",
-      [email]
-    );
-
-    if (clients.length === 0) {
-      return res.status(404).json({ error: "No account found with this email" });
+    const client = await prisma.customer.findFirst({ where: { email } });
+    if (!client) {
+      return res.status(404).json({ error: 'No account found with this email' });
     }
-
     // Generate reset token
     const resetToken = jwt.sign(
-      { id: clients[0].id, email },
+      { id: client.id, email },
       process.env.JWT_SECRET,
-      { expiresIn: '1h' }
+      { expiresIn: '5m' } // Token expires in 5 minutes
     );
-
-    // Store reset token (in production, you'd store this in database)
-    // For now, we'll just return it
-    res.json({ 
-      message: "Password reset instructions sent to your email",
-      resetToken // In production, send this via email
+    // Send password reset email with clickable link
+    const resetUrl = `https://umuhuzaonline.com/reset-password?token=${resetToken}`;
+    await sendEmail({
+      to: email,
+      subject: 'UMUHUZA ONLINE Password Reset',
+      text: `Dear ${client.name || 'User'},\n\nYou requested a password reset. Click the link below to reset your password:\n${resetUrl}\n\nThis link will expire in 5 minutes and can only be used once.\n\nIf you did not request this, please ignore this email.`,
+      html: `<p>Dear ${client.name || 'User'},</p>
+             <p>You requested a password reset. Click the link below to reset your password:</p>
+             <p><a href="${resetUrl}" style="color: #38B496;">Reset your password</a></p>
+             <p><b>This link will expire in 5 minutes and can only be used once.</b></p>
+             <p>If you did not request this, please ignore this email.</p>`
     });
+    res.json({ message: 'Password reset instructions sent to your email', resetToken });
   } catch (error) {
-    console.error("Error in forgot password:", error);
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: error.message, prisma: error.meta || undefined });
   }
 };
 
@@ -247,25 +201,16 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    // Update password
-    await db.query(
-      "UPDATE customers SET password = ? WHERE id = ?",
-      [hashedPassword, decoded.id]
-    );
-
-    res.json({ message: "Password reset successfully" });
+    const clientId = decoded.id;
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+    await prisma.customer.update({
+      where: { id: clientId },
+      data: { password: hashedNewPassword }
+    });
+    res.json({ message: 'Password reset successfully' });
   } catch (error) {
-    console.error("Error resetting password:", error);
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(400).json({ error: "Invalid or expired reset token" });
-    }
-    res.status(500).json({ error: "Internal server error" });
+    res.status(500).json({ error: 'Internal server error' });
   }
 }; 

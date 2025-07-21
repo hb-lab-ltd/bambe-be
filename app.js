@@ -17,6 +17,7 @@ const auth = require('./routes/authRoutes')
 const clientAuthRoutes = require('./routes/clientAuthRoutes');
 const productImageRoutes = require('./routes/productImageRoutes');
 const ordersproductRoute =require("./routes/ordersproductRoute");
+const contactRoutes = require('./routes/contactRoutes');
 
 const listingRoutes = require("./routes/listingRoutes");
 const propertycategoryRoutes = require("./routes/propertycategoryRoutes");
@@ -52,6 +53,7 @@ app.use('/api/subscriptions', subscriptionsRouter);
 app.use('/api/promotions', promotionsRouter);
 app.use('/api/product-images', productImageRoutes);
 app.use('/api/productorders', ordersproductRoute); 
+app.use('/api/contact', contactRoutes);
 
 app.use("/api/listings", listingRoutes);
 app.use("/api/propertycategories", propertycategoryRoutes);

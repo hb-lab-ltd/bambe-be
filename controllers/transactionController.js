@@ -1,8 +1,8 @@
-const db = require('../db');
+const prisma = require('../prismaClient');
 
 exports.getTransactions = async (req, res) => {
   try {
-    const [transactions] = await db.query("SELECT * FROM transactions");
+    const transactions = await prisma.transaction.findMany();
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -11,9 +11,9 @@ exports.getTransactions = async (req, res) => {
 
 exports.getTransactionById = async (req, res) => {
   try {
-    const [transaction] = await db.query("SELECT * FROM transactions WHERE transaction_id = ?", [req.params.id]);
-    if (transaction.length === 0) return res.status(404).json({ error: "Transaction not found" });
-    res.json(transaction[0]);
+    const transaction = await prisma.transaction.findUnique({ where: { transaction_id: Number(req.params.id) } });
+    if (!transaction) return res.status(404).json({ error: 'Transaction not found' });
+    res.json(transaction);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -22,9 +22,8 @@ exports.getTransactionById = async (req, res) => {
 exports.createTransaction = async (req, res) => {
   try {
     const { listing_id, buyer_id, seller_id, status } = req.body;
-    await db.query("INSERT INTO transactions (listing_id, buyer_id, seller_id, status) VALUES (?, ?, ?, ?)", 
-      [listing_id, buyer_id, seller_id, status]);
-    res.status(201).json({ message: "Transaction created successfully" });
+    await prisma.transaction.create({ data: { listing_id, buyer_id, seller_id, status } });
+    res.status(201).json({ message: 'Transaction created successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -33,9 +32,8 @@ exports.createTransaction = async (req, res) => {
 exports.updateTransaction = async (req, res) => {
   try {
     const { status } = req.body;
-    await db.query("UPDATE transactions SET status = ? WHERE transaction_id = ?", 
-      [status, req.params.id]);
-    res.json({ message: "Transaction updated successfully" });
+    await prisma.transaction.update({ where: { transaction_id: Number(req.params.id) }, data: { status } });
+    res.json({ message: 'Transaction updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -43,8 +41,8 @@ exports.updateTransaction = async (req, res) => {
 
 exports.deleteTransaction = async (req, res) => {
   try {
-    await db.query("DELETE FROM transactions WHERE transaction_id = ?", [req.params.id]);
-    res.json({ message: "Transaction deleted successfully" });
+    await prisma.transaction.delete({ where: { transaction_id: Number(req.params.id) } });
+    res.json({ message: 'Transaction deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

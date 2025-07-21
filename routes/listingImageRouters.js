@@ -2,13 +2,10 @@ const express = require('express');
 const router = express.Router();
 const listingImageController = require('../controllers/listingimages');
 
-const uploadImage = listingImageController.uploadImages;
-
-
-router.post('/', uploadImage, listingImageController.createProductImages);
-
-router.get('/:product_id', listingImageController.getListingImages);
-
-router.delete('/:id', listingImageController.deleteProductImage);
+router.get('/', listingImageController.getAllListingImages);
+router.get('/:id', listingImageController.getListingImageById);
+router.post('/', listingImageController.upload, listingImageController.createListingImage);
+router.put('/:id', listingImageController.updateListingImage);
+router.delete('/:id', listingImageController.deleteListingImage);
 
 module.exports = router;

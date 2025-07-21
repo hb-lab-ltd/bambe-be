@@ -1,32 +1,16 @@
-const db = require("../db");
+const prisma = require('../prismaClient');
+const nodemailer = require('nodemailer');
+require('dotenv').config();
 
 exports.getAllInquiries = async (req, res) => {
   try {
-    const query = `
-      SELECT 
-        i.id,
-        i.name,
-        i.email,
-        i.phone,
-        i.message,
-        i.property_id,
-        i.status,
-        i.priority,
-        i.created_at,
-        i.reply_message,
-        i.replied_at,
-        i.client_reply,
-        i.client_replied_at,
-        l.title as property_name,
-        l.listing_id,
-        l.price as property_price,
-        l.location as property_location
-      FROM inquiries i
-      LEFT JOIN listings l ON i.property_id = l.listing_id
-      ORDER BY i.created_at DESC
-    `;
-    const [rows] = await db.query(query);
-    res.json(rows);
+    const inquiries = await prisma.inquiry.findMany({
+      include: {
+        property: true
+      },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(inquiries);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -35,80 +19,90 @@ exports.getAllInquiries = async (req, res) => {
 exports.getInquiriesByAgent = async (req, res) => {
   const user_id = req.user?.id;
   try {
-    const query = `
-      SELECT 
-        i.id,
-        i.name,
-        i.email,
-        i.phone,
-        i.message,
-        i.property_id,
-        i.status,
-        i.priority,
-        i.created_at,
-        i.reply_message,
-        i.replied_at,
-        i.client_reply,
-        i.client_replied_at,
-        l.title as property_name,
-        l.listing_id,
-        l.price as property_price,
-        l.location as property_location
-      FROM inquiries i
-      LEFT JOIN listings l ON i.property_id = l.listing_id
-      WHERE l.user_id = ?
-      ORDER BY i.created_at DESC
-    `;
-    const [rows] = await db.query(query, [user_id]);
-    res.json(rows);
+    const inquiries = await prisma.inquiry.findMany({
+      where: { property: { user_id: user_id } },
+      include: { property: true },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(inquiries);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// Get inquiries by client
 exports.getInquiriesByClient = async (req, res) => {
   const clientId = req.user?.id;
   try {
-    const query = `
-      SELECT 
-        i.id,
-        i.name,
-        i.email,
-        i.phone,
-        i.message,
-        i.property_id,
-        i.status,
-        i.priority,
-        i.created_at,
-        i.reply_message,
-        i.replied_at,
-        l.title as property_name,
-        l.listing_id,
-        l.price,
-        l.location
-      FROM inquiries i
-      LEFT JOIN listings l ON i.property_id = l.listing_id
-      WHERE i.client_id = ? OR i.email = (SELECT email FROM customers WHERE id = ?)
-      ORDER BY i.created_at DESC
-    `;
-    const [rows] = await db.query(query, [clientId, clientId]);
-    res.json(rows);
+    const inquiries = await prisma.inquiry.findMany({
+      where: {
+        OR: [
+          { client_id: clientId },
+          { email: (await prisma.customer.findUnique({ where: { id: clientId } }))?.email || '' }
+        ]
+      },
+      include: { property: true },
+      orderBy: { created_at: 'desc' }
+    });
+    res.json(inquiries);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
+
+// Utility function to send email
+async function sendEmail({ to, subject, text, html }) {
+  const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+  });
+  return transporter.sendMail({
+    from: process.env.EMAIL_USER,
+    to,
+    subject,
+    text,
+    html,
+  });
+}
 
 exports.createInquiry = async (req, res) => {
   const { name, email, phone, message, property_id } = req.body;
   const clientId = req.user?.id;
-  
   try {
-    const [result] = await db.query(
-      'INSERT INTO inquiries (name, email, phone, message, property_id, status, priority, client_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [name, email, phone, message, property_id, 'new', 'medium', clientId || null]
-    );
-    res.status(201).json({ id: result.insertId, message: "Inquiry created successfully" });
+    const inquiry = await prisma.inquiry.create({
+      data: {
+        name,
+        email,
+        phone,
+        message,
+        property_id,
+        status: 'new',
+        priority: 'medium',
+        client_id: clientId || null
+      }
+    });
+
+    // Send email to admin
+    await sendEmail({
+      to: process.env.EMAIL_USER,
+      subject: 'New Inquiry Received',
+      text: `A new inquiry was submitted by ${name} (${email}, ${phone}):\n${message}`,
+      html: `<p>A new inquiry was submitted by <b>${name}</b> (${email}, ${phone}):</p><p>${message}</p>`
+    });
+
+    // Send confirmation email to user (if email provided)
+    if (email) {
+      await sendEmail({
+        to: email,
+        subject: 'Thank you for your inquiry',
+        text: `Dear ${name},\n\nThank you for your inquiry. We have received your message and will get back to you soon.`,
+        html: `<p>Dear ${name},</p><p>Thank you for your inquiry. We have received your message and will get back to you soon.</p>`
+      });
+    }
+
+    res.status(201).json({ id: inquiry.id, message: 'Inquiry created successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -116,46 +110,30 @@ exports.createInquiry = async (req, res) => {
 
 exports.getInquiryById = async (req, res) => {
   try {
-    const [rows] = await db.query('SELECT * FROM inquiries WHERE id = ?', [req.params.id]);
-    if (rows.length === 0) return res.status(404).json({ error: 'Inquiry not found' });
-    res.json(rows[0]);
+    const inquiry = await prisma.inquiry.findUnique({ where: { id: Number(req.params.id) } });
+    if (!inquiry) return res.status(404).json({ error: 'Inquiry not found' });
+    res.json(inquiry);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-// Get inquiry by ID for client (with property details)
 exports.getInquiryByIdForClient = async (req, res) => {
   const clientId = req.user?.id;
-  console.log('Client inquiry request:', { clientId, inquiryId: req.params.id, user: req.user });
-  
   try {
-    const query = `
-      SELECT 
-        i.*,
-        l.title as property_name,
-        l.listing_id,
-        l.price,
-        l.location,
-        l.description
-      FROM inquiries i
-      LEFT JOIN listings l ON i.property_id = l.listing_id
-      WHERE i.id = ? AND (i.client_id = ? OR i.email = (SELECT email FROM customers WHERE id = ?))
-    `;
-    
-    console.log('Executing query with params:', [req.params.id, clientId, clientId]);
-    const [rows] = await db.query(query, [req.params.id, clientId, clientId]);
-    console.log('Query result:', rows);
-    
-    if (rows.length === 0) {
-      console.log('No inquiry found for client');
-      return res.status(404).json({ error: 'Inquiry not found' });
-    }
-    
-    console.log('Returning inquiry:', rows[0]);
-    res.json(rows[0]);
+    const inquiry = await prisma.inquiry.findFirst({
+      where: {
+        id: Number(req.params.id),
+        OR: [
+          { client_id: clientId },
+          { email: (await prisma.customer.findUnique({ where: { id: clientId } }))?.email || '' }
+        ]
+      },
+      include: { property: true }
+    });
+    if (!inquiry) return res.status(404).json({ error: 'Inquiry not found' });
+    res.json(inquiry);
   } catch (err) {
-    console.error('Error in getInquiryByIdForClient:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -163,10 +141,7 @@ exports.getInquiryByIdForClient = async (req, res) => {
 exports.updateInquiry = async (req, res) => {
   const { status, priority, notes } = req.body;
   try {
-    await db.query(
-      'UPDATE inquiries SET status = ?, priority = ?, notes = ? WHERE id = ?',
-      [status, priority, notes, req.params.id]
-    );
+    await prisma.inquiry.update({ where: { id: Number(req.params.id) }, data: { status, priority, notes } });
     res.json({ message: 'Inquiry updated successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -176,10 +151,7 @@ exports.updateInquiry = async (req, res) => {
 exports.replyToInquiry = async (req, res) => {
   const { reply_message } = req.body;
   try {
-    await db.query(
-      'UPDATE inquiries SET status = ?, replied_at = NOW(), reply_message = ? WHERE id = ?',
-      ['replied', reply_message, req.params.id]
-    );
+    await prisma.inquiry.update({ where: { id: Number(req.params.id) }, data: { status: 'replied', replied_at: new Date(), reply_message } });
     res.json({ message: 'Reply sent successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -192,20 +164,25 @@ exports.clientReplyToInquiry = async (req, res) => {
   const clientId = req.user?.id;
   try {
     // First verify the inquiry belongs to this client
-    const [inquiry] = await db.query(
-      'SELECT * FROM inquiries WHERE id = ? AND (client_id = ? OR email = (SELECT email FROM customers WHERE id = ?))',
-      [req.params.id, clientId, clientId]
-    );
+    const inquiry = await prisma.inquiry.findFirst({
+      where: {
+        id: Number(req.params.id),
+        OR: [
+          { client_id: clientId },
+          { email: (await prisma.customer.findUnique({ where: { id: clientId } }))?.email || '' }
+        ]
+      }
+    });
     
-    if (inquiry.length === 0) {
+    if (!inquiry) {
       return res.status(404).json({ error: 'Inquiry not found' });
     }
 
     // Update the inquiry with client's reply
-    await db.query(
-      'UPDATE inquiries SET status = ?, client_reply = ?, client_replied_at = NOW() WHERE id = ?',
-      ['client_replied', client_message, req.params.id]
-    );
+    await prisma.inquiry.update({
+      where: { id: Number(req.params.id) },
+      data: { status: 'client_replied', client_reply: client_message, client_replied_at: new Date() }
+    });
     
     res.json({ message: 'Reply sent successfully' });
   } catch (err) {
@@ -215,7 +192,7 @@ exports.clientReplyToInquiry = async (req, res) => {
 
 exports.deleteInquiry = async (req, res) => {
   try {
-    await db.query('DELETE FROM inquiries WHERE id = ?', [req.params.id]);
+    await prisma.inquiry.delete({ where: { id: Number(req.params.id) } });
     res.json({ message: 'Inquiry deleted successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -225,21 +202,27 @@ exports.deleteInquiry = async (req, res) => {
 exports.getInquiryStats = async (req, res) => {
   const user_id = req.user?.id;
   try {
-    const query = `
-      SELECT 
-        COUNT(*) as total_inquiries,
-        SUM(CASE WHEN i.status = 'new' THEN 1 ELSE 0 END) as new_inquiries,
-        SUM(CASE WHEN i.status = 'replied' THEN 1 ELSE 0 END) as replied_inquiries,
-        SUM(CASE WHEN i.status = 'closed' THEN 1 ELSE 0 END) as closed_inquiries,
-        SUM(CASE WHEN i.priority = 'high' THEN 1 ELSE 0 END) as high_priority,
-        SUM(CASE WHEN i.priority = 'medium' THEN 1 ELSE 0 END) as medium_priority,
-        SUM(CASE WHEN i.priority = 'low' THEN 1 ELSE 0 END) as low_priority
-      FROM inquiries i
-      LEFT JOIN listings l ON i.property_id = l.listing_id
-      WHERE l.user_id = ?
-    `;
-    const [rows] = await db.query(query, [user_id]);
-    res.json(rows[0]);
+    const inquiries = await prisma.inquiry.findMany({
+      where: { property: { user_id: user_id } },
+      include: { property: true }
+    });
+    const totalInquiries = inquiries.length;
+    const newInquiries = inquiries.filter(i => i.status === 'new').length;
+    const repliedInquiries = inquiries.filter(i => i.status === 'replied').length;
+    const closedInquiries = inquiries.filter(i => i.status === 'closed').length;
+    const highPriority = inquiries.filter(i => i.priority === 'high').length;
+    const mediumPriority = inquiries.filter(i => i.priority === 'medium').length;
+    const lowPriority = inquiries.filter(i => i.priority === 'low').length;
+
+    res.json({
+      total_inquiries: totalInquiries,
+      new_inquiries: newInquiries,
+      replied_inquiries: repliedInquiries,
+      closed_inquiries: closedInquiries,
+      high_priority: highPriority,
+      medium_priority: mediumPriority,
+      low_priority: lowPriority
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -249,18 +232,27 @@ exports.getInquiryStats = async (req, res) => {
 exports.getClientInquiryStats = async (req, res) => {
   const clientId = req.user?.id;
   try {
-    const query = `
-      SELECT 
-        COUNT(*) as total_inquiries,
-        SUM(CASE WHEN i.status = 'new' THEN 1 ELSE 0 END) as new_inquiries,
-        SUM(CASE WHEN i.status = 'replied' THEN 1 ELSE 0 END) as replied_inquiries,
-        SUM(CASE WHEN i.status = 'client_replied' THEN 1 ELSE 0 END) as client_replied_inquiries,
-        SUM(CASE WHEN i.status = 'closed' THEN 1 ELSE 0 END) as closed_inquiries
-      FROM inquiries i
-      WHERE i.client_id = ? OR i.email = (SELECT email FROM customers WHERE id = ?)
-    `;
-    const [rows] = await db.query(query, [clientId, clientId]);
-    res.json(rows[0]);
+    const inquiries = await prisma.inquiry.findMany({
+      where: {
+        OR: [
+          { client_id: clientId },
+          { email: (await prisma.customer.findUnique({ where: { id: clientId } }))?.email || '' }
+        ]
+      }
+    });
+    const totalInquiries = inquiries.length;
+    const newInquiries = inquiries.filter(i => i.status === 'new').length;
+    const repliedInquiries = inquiries.filter(i => i.status === 'replied').length;
+    const clientRepliedInquiries = inquiries.filter(i => i.status === 'client_replied').length;
+    const closedInquiries = inquiries.filter(i => i.status === 'closed').length;
+
+    res.json({
+      total_inquiries: totalInquiries,
+      new_inquiries: newInquiries,
+      replied_inquiries: repliedInquiries,
+      client_replied_inquiries: clientRepliedInquiries,
+      closed_inquiries: closedInquiries
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
